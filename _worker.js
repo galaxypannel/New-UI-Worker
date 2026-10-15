@@ -4,106 +4,17 @@ import { connect } from "cloudflare:sockets";
 // CONSTANTS & DEFAULT CONFIGURATION
 // ============================================
 const DEFAULT_LOCAL_PROXIES = [
+  "cdn-b100.xn--b6gac.eu.org",
+  "cdn.xn--b6gac.eu.org",
   "bpb.yousef.isegaro.com",
-  "galaxytunnel.cloud-ip.cc",
-  "www.visa.com.hk",
+  "icook.hk",
+  "icook.tw",
   "www.visa.com.sg"
 ];
 
-const DEFAULT_DOH_URL = ["https://cloudflare-dns.com/dns-query","https://dns.google/dns-query","https://dns.quad9.net/dns-query","https://dns.adguard-dns.com/dns-query"];
+const DEFAULT_DOH_URL = "https://cloudflare-dns.com/dns-query";
 const CONNECTION_TIMEOUT_MS = 30000; // 30 seconds timeout
-const DEFAULT_RATE_LIMIT_PER_MINUTE = 500;
-const DEFAULT_WS_PATH = "galaxy-tunnel";
-const MAX_CONFIG_PATH_LENGTH = 128;
-
-// ============================================
-// AD & TRACKER DOMAIN BLOCKING
-// Domain-based filtering only; encrypted/server-side ads cannot be identified here.
-// ============================================
-const AD_DOMAIN_SUFFIXES = [
-  "doubleclick.net",
-  "googleadservices.com",
-  "googlesyndication.com",
-  "adservice.google.com",
-  "pagead2.googlesyndication.com",
-  "adcolony.com",
-  "appsflyer.com",
-  "unityads.unity3d.com",
-  "vungle.com",
-  "applovin.com",
-  "flurry.com",
-  "adjust.com",
-  "branch.io",
-  "admob.com",
-  "mopub.com",
-  "criteo.com",
-  "taboola.com",
-  "outbrain.com",
-  "scorecardresearch.com",
-  "quantserve.com",
-  "popads.net",
-  "inmobi.com",
-  "adroll.com",
-  "amazon-adsystem.com",
-  "adsafeprotected.com",
-  "moatads.com",
-  "openx.net",
-  "rubiconproject.com",
-  "pubmatic.com"
-];
-
-function isAdDomain(domain) {
-  if (!domain || typeof domain !== "string") return false;
-  const lower = domain.toLowerCase().trim().replace(/\.$/, "");
-  if (AD_DOMAIN_SUFFIXES.some((suffix) => lower === suffix || lower.endsWith("." + suffix))) {
-    return true;
-  }
-  return /^(ad|ads|adservice|adserver|telemetry|track|tracker|analytics)\./i.test(lower);
-}
-
-// ============================================
-// DESTINATION ROUTE RULES & SERVER FALLBACK
-// Env format:
-// ROUTE_RULES=[{"match":"youtube.com","server":"edge-a"}]
-// ROUTE_SERVERS=[{"name":"edge-a","host":"proxy.example.com","port":443}]
-// ============================================
-function parseJsonEnv(value, fallback = []) {
-  if (!value) return fallback;
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function routeMatch(host, rule) {
-  const pattern = String(rule?.match || rule?.domain || rule?.ip || "").toLowerCase().trim();
-  if (!pattern) return false;
-  const value = String(host || "").toLowerCase().trim();
-  if (pattern.startsWith("*.")) return value.endsWith(pattern.slice(1));
-  return value === pattern || value.endsWith("." + pattern);
-}
-
-function resolveRouteTarget(address, port, rawRules, rawServers, logger) {
-  const rules = parseJsonEnv(rawRules);
-  const servers = parseJsonEnv(rawServers);
-  const rule = rules.find((candidate) => routeMatch(address, candidate) &&
-    (!candidate.port || Number(candidate.port) === Number(port)));
-  if (!rule) return null;
-
-  const server = servers.find((item) => String(item.name || item.id) === String(rule.server || ""));
-  if (!server?.host || isPrivateOrBlockedHost(String(server.host))) {
-    if (logger) logger.warn("ROUTE_SERVER_INVALID", { address, route: rule.server || null });
-    return null;
-  }
-  return {
-    name: String(server.name || server.id || "route-server"),
-    host: String(server.host),
-    port: Number(server.port || port),
-    rule: String(rule.match || rule.domain || rule.ip || "")
-  };
-}
+const DEFAULT_RATE_LIMIT_PER_MINUTE = 60;
 
 // ============================================
 // STRUCTURED LOGGER WITH REQUEST ID (Item 9)
@@ -394,78 +305,570 @@ function isValidUUID(uuid) {
 }
 
 // ============================================
-// HOSTED IMAGE PAGE
+// HTML UI PAGES WITH NOINDEX META (Item 1, 11, 12)
 // ============================================
-const HOSTED_IMAGE_URL = "https://i.ibb.co/yc2TMYKj/VEGA-1792076229748.jpg";
+function getGalaxyPage() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GALAXY TUNNEL - UI DASHBOARD</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            user-select: none;
+        }
 
-function getImagePage() {
-  return `<!doctype html>
+        html, body {
+            width: 100%;
+            min-height: 100%;
+        }
+
+        body {
+            background-color: #030814;
+            min-height: 100svh;
+            height: 100dvh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: auto;
+            padding: max(16px, env(safe-area-inset-top))
+                     max(16px, env(safe-area-inset-right))
+                     max(16px, env(safe-area-inset-bottom))
+                     max(16px, env(safe-area-inset-left));
+            perspective: 1000px; /* 3D Card tilt effect အတွက် */
+        }
+
+        /* Animated Space Stars Canvas */
+        #galaxy-canvas {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* Main Dashboard Card (Matches Image Perfectly) */
+        .card-container {
+            position: relative;
+            z-index: 10;
+            width: min(92vw, 580px);
+            max-width: 580px;
+            margin: auto;
+            background: radial-gradient(circle at 60% 40%, rgba(12, 28, 58, 0.96), rgba(2, 6, 17, 0.98));
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            border-radius: 20px;
+            padding: 40px 32px 35px 32px;
+            box-shadow: 0 0 60px rgba(0, 140, 255, 0.12),
+                        inset 0 0 40px rgba(56, 189, 248, 0.04);
+            transform-style: preserve-3d;
+            transition: transform 0.15s ease-out, box-shadow 0.3s ease;
+        }
+
+        /* Card Hover Dynamic Glow */
+        .card-container:hover {
+            box-shadow: 0 0 80px rgba(56, 189, 248, 0.22),
+                        inset 0 0 40px rgba(56, 189, 248, 0.08);
+        }
+
+        /* 4-Point Sparkle Icons */
+        .sparkle-icon {
+            position: absolute;
+            color: rgba(186, 230, 253, 0.85);
+            font-size: 16px;
+            filter: drop-shadow(0 0 6px #38bdf8);
+            animation: twinkle 3s infinite ease-in-out alternate;
+            pointer-events: none;
+        }
+        .sp-1 { top: 22px; left: 22px; }
+        .sp-2 { bottom: 18px; right: 24px; font-size: 20px; animation-delay: 1.5s; }
+
+        /* Tech Constellation Diagram (Watermark inside the image) */
+        .tech-watermark {
+            position: absolute;
+            right: 45px;
+            bottom: 60px;
+            width: 85px;
+            opacity: 0.16;
+            pointer-events: none;
+            animation: pulse-circuit 4s infinite alternate ease-in-out;
+        }
+
+        /* Header Row */
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        /* Spiral Galaxy SVG Logo */
+        .galaxy-logo {
+            width: 44px;
+            height: 44px;
+            filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.9));
+            animation: spin-slow 22s linear infinite;
+        }
+
+        .title {
+            color: #ffffff;
+            font-size: clamp(1.8rem, 4.5vw, 2.35rem);
+            font-weight: 800;
+            letter-spacing: 2.5px;
+            text-transform: uppercase;
+            text-shadow: 0 0 16px rgba(255, 255, 255, 0.4),
+                         0 0 32px rgba(56, 189, 248, 0.5);
+        }
+
+        /* Subtitle: VLESS CONFIG */
+        .subtitle {
+            color: #4dd0e1;
+            font-size: 1.65rem;
+            font-weight: 700;
+            letter-spacing: 3.5px;
+            margin-bottom: 16px;
+            text-shadow: 0 0 18px rgba(77, 208, 225, 0.6);
+        }
+
+        /* Details Row: Cloudflare Anycast / 100% Zero-Log */
+        .info-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: #94a3b8;
+            font-size: 1.05rem;
+            font-weight: 500;
+            margin-bottom: 35px;
+        }
+
+        .info-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .info-icon {
+            width: 17px;
+            height: 17px;
+            fill: #94a3b8;
+        }
+
+        /* UI Action Button */
+        .community-btn {
+            width: 100%;
+            position: relative;
+            background: linear-gradient(180deg, #38bdf8 0%, #1e88e5 100%);
+            border: 1px solid rgba(255, 255, 255, 0.45);
+            border-radius: 14px;
+            padding: 18px 24px;
+            cursor: pointer;
+            box-shadow: 0 8px 30px rgba(2, 132, 199, 0.45),
+                        inset 0 2px 4px rgba(255, 255, 255, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .community-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 35px rgba(56, 189, 248, 0.65),
+                        inset 0 2px 4px rgba(255, 255, 255, 0.7);
+        }
+
+        .community-btn:active {
+            transform: translateY(1px);
+        }
+
+        /* Shimmer Wave Effect */
+        .community-btn::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(60deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+            transform: rotate(25deg);
+            animation: light-shimmer 4s infinite;
+        }
+
+        .btn-text {
+            color: #031427;
+            font-size: 1.25rem;
+            font-weight: 800;
+            letter-spacing: 1.8px;
+            text-transform: uppercase;
+            z-index: 2;
+        }
+
+        /* Ripple Effect */
+        .ripple {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.6);
+            transform: scale(0);
+            animation: ripple-animation 0.6s linear;
+            pointer-events: none;
+        }
+
+        /* Keyframes */
+        @keyframes spin-slow {
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes twinkle {
+            0% { opacity: 0.3; transform: scale(0.85); }
+            100% { opacity: 1; transform: scale(1.25); }
+        }
+
+        @keyframes pulse-circuit {
+            0% { opacity: 0.12; }
+            100% { opacity: 0.28; }
+        }
+
+        @keyframes light-shimmer {
+            0% { transform: translateX(-150%) rotate(25deg); }
+            100% { transform: translateX(150%) rotate(25deg); }
+        }
+
+        @keyframes ripple-animation {
+            to {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+
+        /* Mobile: keep the complete card centered inside the visible browser area. */
+        @media (max-width: 600px) {
+            body {
+                align-items: center;
+                justify-content: center;
+                padding: max(12px, env(safe-area-inset-top))
+                         max(12px, env(safe-area-inset-right))
+                         max(12px, env(safe-area-inset-bottom))
+                         max(12px, env(safe-area-inset-left));
+            }
+
+            .card-container {
+                width: min(94vw, 480px);
+                padding: 28px 20px 24px;
+                border-radius: 16px;
+            }
+
+            .header {
+                gap: 10px;
+                margin-bottom: 18px;
+            }
+
+            .galaxy-logo {
+                width: 36px;
+                height: 36px;
+                flex: 0 0 auto;
+            }
+
+            .title {
+                font-size: clamp(1.35rem, 7.5vw, 2rem);
+                letter-spacing: 1.5px;
+                white-space: nowrap;
+            }
+
+            .subtitle {
+                font-size: clamp(1.15rem, 6vw, 1.65rem);
+                letter-spacing: 2px;
+            }
+
+            .info-row {
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 8px 12px;
+                margin-bottom: 24px;
+                font-size: 0.85rem;
+            }
+
+            .info-item[style] {
+                margin-left: 0 !important;
+            }
+
+            .btn-text {
+                font-size: 0.95rem;
+                letter-spacing: 1px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Space Particle Animation Canvas -->
+    <canvas id="galaxy-canvas"></canvas>
+
+    <!-- Main Card Component -->
+    <div class="card-container" id="dashboardCard">
+        
+        <!-- Stars -->
+        <div class="sparkle-icon sp-1">✦</div>
+        <div class="sparkle-icon sp-2">✦</div>
+
+        <!-- Blueprint Tech Diagram (Watermark) -->
+        <svg class="tech-watermark" viewBox="0 0 100 80" fill="none" stroke="#38bdf8" stroke-width="1.3">
+            <circle cx="20" cy="50" r="3" fill="#38bdf8" />
+            <circle cx="50" cy="20" r="4" fill="#38bdf8" />
+            <circle cx="80" cy="50" r="3" fill="#38bdf8" />
+            <circle cx="50" cy="65" r="3" fill="#38bdf8" />
+            <path d="M 20 50 Q 50 10 80 50" />
+            <path d="M 20 50 L 50 65 L 80 50" />
+            <line x1="50" y1="20" x2="50" y2="65" />
+            <circle cx="50" cy="40" r="8" stroke-dasharray="2 2" />
+        </svg>
+
+        <!-- Header -->
+        <div class="header">
+            <!-- Galaxy Spiral SVG Icon -->
+            <svg class="galaxy-logo" viewBox="0 0 100 100" fill="none">
+                <path d="M50 15 C30 15, 15 30, 15 50 C15 70, 30 85, 50 85 C65 85, 78 75, 82 62 C85 52, 80 40, 70 35 C60 30, 48 35, 42 42 C38 48, 40 55, 45 60 C50 64, 58 63, 62 58 C65 54, 64 48, 60 46" 
+                      stroke="#bae6fd" stroke-width="4.5" stroke-linecap="round"/>
+                <circle cx="50" cy="50" r="4" fill="#ffffff" />
+            </svg>
+            <h1 class="title">GALAXY TUNNEL</h1>
+        </div>
+
+        <!-- Subtitle -->
+        <h2 class="subtitle">VLESS CONFIG</h2>
+
+        <!-- Details Info Row -->
+        <div class="info-row">
+            <div class="info-item">
+                <!-- Cloudflare Icon -->
+                <svg class="info-icon" viewBox="0 0 24 24">
+                    <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/>
+                </svg>
+                <span>Cloudflare Anycast</span>
+            </div>
+            
+            <div class="info-item" style="margin-left: 8px;">
+                <!-- Shield Icon -->
+                <svg class="info-icon" viewBox="0 0 24 24">
+                    <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
+                </svg>
+                <span>100% Zero-Log</span>
+            </div>
+        </div>
+
+        <!-- Main Button -->
+        <button class="community-btn" id="mainBtn">
+            <span class="btn-text">FREE COMMUNITY ACCESS</span>
+        </button>
+
+    </div>
+
+    <script>
+        /* ================= 1. SPACE CANVAS ANIMATION ================= */
+        const canvas = document.getElementById('galaxy-canvas');
+        const ctx = canvas.getContext('2d');
+        let stars = [];
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        class ParticleStar {
+            constructor() {
+                this.reset();
+            }
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = Math.random() * 1.6 + 0.4;
+                this.baseAlpha = Math.random() * 0.6 + 0.2;
+                this.alpha = this.baseAlpha;
+                this.speed = Math.random() * 0.02 + 0.01;
+                this.angle = Math.random() * Math.PI * 2;
+            }
+            update() {
+                this.angle += this.speed;
+                this.alpha = this.baseAlpha + Math.sin(this.angle) * 0.3;
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = \`rgba(186, 230, 253, \${Math.max(0, this.alpha)})\`;
+                ctx.shadowBlur = this.size * 3;
+                ctx.shadowColor = '#38bdf8';
+                ctx.fill();
+            }
+        }
+
+        for (let i = 0; i < 110; i++) stars.push(new ParticleStar());
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            stars.forEach(s => {
+                s.update();
+                s.draw();
+            });
+            requestAnimationFrame(animate);
+        }
+        animate();
+
+        /* ================= 2. 3D CARD TILT PARALLAX EFFECT ================= */
+        const card = document.getElementById('dashboardCard');
+
+        document.addEventListener('mousemove', (e) => {
+            const { clientX, clientY } = e;
+            const centerX = window.innerWidth / 2;
+            const centerY = window.innerHeight / 2;
+
+            const rotateX = ((clientY - centerY) / centerY) * -9; // Max 9 deg
+            const rotateY = ((clientX - centerX) / centerX) * 9;
+
+            card.style.transform = \`rotateX(\${rotateX}deg) rotateY(\${rotateY}deg)\`;
+        });
+
+        document.addEventListener('mouseleave', () => {
+            card.style.transform = \`rotateX(0deg) rotateY(0deg)\`;
+        });
+
+        /* ================= 3. BUTTON CLICK RIPPLE EFFECT ================= */
+        const btn = document.getElementById('mainBtn');
+        btn.addEventListener('click', function (e) {
+            const circle = document.createElement('span');
+            const diameter = Math.max(btn.clientWidth, btn.clientHeight);
+            const radius = diameter / 2;
+
+            const rect = btn.getBoundingClientRect();
+            circle.style.width = circle.style.height = \`\${diameter}px\`;
+            circle.style.left = \`\${e.clientX - rect.left - radius}px\`;
+            circle.style.top = \`\${e.clientY - rect.top - radius}px\`;
+            circle.classList.add('ripple');
+
+            const existingRipple = btn.querySelector('.ripple');
+            if (existingRipple) existingRipple.remove();
+
+            btn.appendChild(circle);
+        });
+    </script>
+</body>
+</html>`
+}
+
+// 401 Unauthorized Step-by-Step Setup Page (Item 1)
+function getUnauthorizedPage() {
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Network Scene</title>
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+  <title>401 Unauthorized - Galaxy-Tunnel Setup</title>
   <style>
-    html, body { margin: 0; padding: 0; background: #fff; }
-    img { display: block; width: 100%; height: auto; max-width: 2560px; margin: 0 auto; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #090d16; color: #e2e8f0;
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: 24px; line-height: 1.6;
+    }
+    .container {
+      max-width: 620px; width: 100%;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 12px; padding: 32px 28px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    }
+    .header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .badge {
+      background: #ef4444; color: #fff; font-weight: 700;
+      font-size: 12px; padding: 4px 10px; border-radius: 9999px;
+      letter-spacing: 0.5px;
+    }
+    h1 { font-size: 22px; color: #f8fafc; font-weight: 700; }
+    p { color: #94a3b8; font-size: 14px; margin-bottom: 20px; }
+    .step-list { list-style: none; display: flex; flex-direction: column; gap: 16px; }
+    .step-item {
+      background: rgba(30, 41, 59, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px; padding: 14px 16px;
+    }
+    .step-title {
+      font-weight: 600; font-size: 14px; color: #38bdf8;
+      display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+    }
+    .step-desc { font-size: 13px; color: #cbd5e1; }
+    code {
+      background: #020617; color: #38bdf8;
+      padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 12px;
+    }
+    .step-num {
+      background: #0284c7; color: #fff; border-radius: 50%;
+      width: 20px; height: 20px; display: inline-flex;
+      align-items: center; justify-content: center; font-size: 11px; font-weight: bold;
+    }
+    .footer-note {
+      margin-top: 24px; font-size: 12px; color: #64748b; text-align: center;
+    }
   </style>
 </head>
 <body>
-  <img src="${HOSTED_IMAGE_URL}" alt="Network connected devices">
+  <div class="container" id="unauthorizedContainer">
+    <div class="header">
+      <span class="badge">401 UNAUTHORIZED</span>
+      <h1>UUID Configuration Required</h1>
+    </div>
+    <p>Galaxy-Tunnel VLESS server is running, but no valid UUID has been configured.</p>
+    <ul class="step-list">
+      <li class="step-item">
+        <div class="step-title"><span class="step-num">1</span> Generate a secure UUID v4</div>
+        <div class="step-desc">Run <code>uuidgen</code> in your terminal or generate one at <a href="https://www.uuidgenerator.net" target="_blank" rel="noopener" style="color:#38bdf8;">uuidgenerator.net</a>.</div>
+      </li>
+      <li class="step-item">
+        <div class="step-title"><span class="step-num">2</span> Set the UUID Environment Variable</div>
+        <div class="step-desc">In Cloudflare Dashboard: <strong>Workers & Pages &gt; Settings &gt; Variables</strong>, add variable <code>UUID</code> with your generated UUID. Or add <code>UUID = "your-uuid"</code> in <code>wrangler.toml</code>.</div>
+      </li>
+      <li class="step-item">
+        <div class="step-title"><span class="step-num">3</span> Configure Your Client</div>
+        <div class="step-desc">In V2Ray, v2rayN, Sing-box, Clash, or NekoBox, add a VLESS node with WebSocket transport pointing to your domain on port 443 with TLS enabled.</div>
+      </li>
+      <li class="step-item">
+        <div class="step-title"><span class="step-num">4</span> Redeploy / Reload</div>
+        <div class="step-desc">Deploy your worker with <code>wrangler deploy</code> and test the connection.</div>
+      </li>
+    </ul>
+    <div class="footer-note">Galaxy-Tunnel VLESS Security Guard &bull; Automatic Access Protection</div>
+  </div>
 </body>
 </html>`;
 }
 
-// ============================================
-// VLESS CONFIGURATION & SUBSCRIPTION OUTPUT
-// ============================================
-function normalizeWsPath(value) {
-  const path = String(value || DEFAULT_WS_PATH)
-    .trim()
-    .replace(/^\/+|\/+$/g, "");
-  if (!path || path.length > MAX_CONFIG_PATH_LENGTH || /[\s\\?#]/.test(path)) {
-    return DEFAULT_WS_PATH;
-  }
-  return path;
-}
-
-function encodeBase64Utf8(value) {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-
-function generateVlessConfigs(host, uuid, wsPath, proxyIP = "") {
-  const cleanHost = String(host || "").replace(/[^a-zA-Z0-9.:-]/g, "");
-  const cleanUuid = String(uuid || "").trim().toLowerCase();
-  const cleanPath = normalizeWsPath(wsPath);
-  const encodedPath = `%2F${encodeURIComponent(cleanPath)}%3Fed%3D2048`;
-  const titleHost = cleanHost.replace(/[^a-zA-Z0-9.-]/g, "");
-
-  const tls = `vless://${cleanUuid}@${cleanHost}:443?encryption=none&security=tls&sni=${cleanHost}&type=ws&host=${cleanHost}&path=${encodedPath}#Galaxy-TLS%20(${titleHost})`;
-  const configs = [tls];
-
-  // CMLiu-style edge address mode: connect to the proxy/edge address while
-  // preserving the Worker hostname in Host/SNI so no custom DNS setup is
-  // required. The same Worker endpoint accepts 443/TLS and 8080/plain WS.
-  const cleanProxy = String(proxyIP || "").trim().split(/[\s,]+/)[0]
-    .replace(/^\[/, "").replace(/\](:\d+)?$/, "").replace(/:\d+$/, "");
-  const edgeAddress = cleanProxy || cleanHost;
-  const ws8080 = `vless://${cleanUuid}@${edgeAddress}:8080?encryption=none&security=none&type=ws&host=${cleanHost}&path=${encodedPath}#Galaxy-WS-8080%20(${edgeAddress})`;
-  configs.push(ws8080);
-
-  if (cleanProxy && !isPrivateOrBlockedHost(cleanProxy)) {
-    configs.push(`vless://${cleanUuid}@${cleanProxy}:443?encryption=none&security=tls&sni=${cleanHost}&type=ws&host=${cleanHost}&path=${encodedPath}#Galaxy-ProxyIP%20(${cleanProxy})`);
-  }
-
-  return {
-    tls,
-    http: ws8080,
-    proxy: configs.find((item) => item.includes("Galaxy-ProxyIP")) || "",
-    plainList: configs.join("\n"),
-    base64: encodeBase64Utf8(configs.join("\n"))
-  };
+// 404 Camouflage Page (Item 11)
+function getCamouflage404() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+  <title>404 Not Found</title>
+  <style>
+    body{font-family:sans-serif;background:#fff;color:#222;text-align:center;padding:50px;}
+    h1{font-size:32px;margin-bottom:10px;}p{color:#666;}
+  </style>
+</head>
+<body>
+  <h1>404 Not Found</h1>
+  <p>The requested resource was not found on this server.</p>
+</body>
+</html>`;
 }
 
 // ============================================
@@ -503,9 +906,7 @@ const worker_default = {
     const proxyIP = env.PROXYIP || env.proxyip || env.PROXY_IP || DEFAULT_LOCAL_PROXIES[0];
     const rawProxyListUrl = env.PROXY_LIST_URL || "";
     const dohURL = env.DNS_RESOLVER_URL || DEFAULT_DOH_URL;
-    const configuredWsPath = normalizeWsPath(env.WS_PATH || DEFAULT_WS_PATH);
-    const routeRulesRaw = env.ROUTE_RULES || "";
-    const routeServersRaw = env.ROUTE_SERVERS || "";
+    const configuredWsPath = (env.WS_PATH || "galaxy-tunnel").replace(/^\/+|\/+$/g, "");
 
     // Health check endpoint (Item 10)
     if (url.pathname === "/health" || url.pathname === "/api/health") {
@@ -513,7 +914,7 @@ const worker_default = {
       return new Response(
         JSON.stringify({
           status: "healthy",
-          service: "hosted-image-worker",
+          service: "galaxy-tunnel-vless",
           timestamp: new Date().toISOString(),
           uuidConfigured: isValidUUID(userID),
           proxyPoolSize: proxyPoolManager.getPoolSize(),
@@ -532,36 +933,13 @@ const worker_default = {
       return new Response(null, { status: 204, headers: getSecurityHeaders("text/plain") });
     }
 
-    // Base64 VLESS subscription
-    if (url.pathname === "/sub" && request.method === "GET") {
-      if (!isValidUUID(userID)) {
-        logger.warn("SUBSCRIPTION_REQUEST_WITHOUT_UUID");
-        return new Response("UUID is not configured", {
-          status: 401,
-          headers: getSecurityHeaders("text/plain; charset=utf-8")
-        });
-      }
-
-      const host = request.headers.get("Host") || url.host;
-      const configs = generateVlessConfigs(host, userID, configuredWsPath, proxyIP);
-      logger.info("SUBSCRIPTION_SERVED", { host, wsPath: configuredWsPath });
-      return new Response(configs.base64, {
-        status: 200,
-        headers: {
-          ...getSecurityHeaders("text/plain; charset=utf-8"),
-          "Subscription-Userinfo": "upload=0; download=0; total=0; expire=0",
-          "Profile-Update-Interval": "24"
-        }
-      });
-    }
-
-    // Handle WebSocket connection
+    // Handle WebSocket Proxy Connection
     const upgradeHeader = request.headers.get("Upgrade");
     if (upgradeHeader === "websocket") {
       // Camouflage WebSocket path leak risk (Item 11)
-      if (pathname !== configuredWsPath) {
+      if (configuredWsPath && pathname !== configuredWsPath && pathname !== "") {
         logger.warn("UNAUTHORIZED_WS_PATH", { path: pathname, expected: configuredWsPath });
-        return new Response(getImagePage(), {
+        return new Response(getCamouflage404(), {
           status: 404,
           headers: getSecurityHeaders("text/html; charset=utf-8")
         });
@@ -570,27 +948,35 @@ const worker_default = {
       // Check UUID validity for WebSocket upgrade (Item 1)
       if (!isValidUUID(userID)) {
         logger.warn("WS_ATTEMPT_WITHOUT_UUID");
-        return new Response(getImagePage(), {
+        return new Response(getUnauthorizedPage(), {
           status: 401,
           headers: getSecurityHeaders("text/html; charset=utf-8")
         });
       }
 
-      return await proxyOverWSHandler(
-        request,
-        userID,
-        proxyIP,
-        rawProxyListUrl,
-        dohURL,
-        logger,
-        routeRulesRaw,
-        routeServersRaw
-      );
+      return await proxyOverWSHandler(request, userID, proxyIP, rawProxyListUrl, dohURL, logger);
     }
 
-    // All non-WebSocket HTTP requests serve the hosted image page.
-    logger.info("IMAGE_PAGE_SERVED");
-    return new Response(getImagePage(), {
+    // Validate UUID on regular web visits (Item 1: return 401 Unauthorized + steps page)
+    if (!isValidUUID(userID)) {
+      logger.info("VISIT_WITHOUT_UUID_SERVED_401");
+      return new Response(getUnauthorizedPage(), {
+        status: 401,
+        headers: getSecurityHeaders("text/html; charset=utf-8")
+      });
+    }
+
+    // Check path for normal GET visits (Item 11: non-matching subpaths return 404 camouflage)
+    if (pathname !== "" && pathname !== configuredWsPath) {
+      return new Response(getCamouflage404(), {
+        status: 404,
+        headers: getSecurityHeaders("text/html; charset=utf-8")
+      });
+    }
+
+    // Normal Web Browser Request -> Render Galaxy Page (Item 12: with noindex)
+    logger.info("GALAXY_PAGE_SERVED");
+    return new Response(getGalaxyPage(), {
       status: 200,
       headers: getSecurityHeaders("text/html; charset=utf-8")
     });
@@ -600,16 +986,7 @@ const worker_default = {
 // ============================================
 // WEBSOCKET PROXY STREAM HANDLER
 // ============================================
-async function proxyOverWSHandler(
-  request,
-  userID,
-  defaultProxy,
-  rawProxyListUrl,
-  dohURL,
-  logger,
-  routeRulesRaw = "",
-  routeServersRaw = ""
-) {
+async function proxyOverWSHandler(request, userID, defaultProxy, rawProxyListUrl, dohURL, logger) {
   const webSocketPair = new WebSocketPair();
   const [client, webSocket] = Object.values(webSocketPair);
   webSocket.accept();
@@ -682,9 +1059,7 @@ async function proxyOverWSHandler(
           responseHeader,
           defaultProxy,
           rawProxyListUrl,
-          logger,
-          routeRulesRaw,
-          routeServersRaw
+          logger
         );
       },
       close() {
@@ -713,29 +1088,8 @@ async function handleTCPOutBound(
   responseHeader,
   defaultProxy,
   rawProxyListUrl,
-  logger,
-  routeRulesRaw = "",
-  routeServersRaw = ""
+  logger
 ) {
-  if (isAdDomain(addressRemote)) {
-    logger.info("AD_DOMAIN_BLOCKED", {
-      address: addressRemote,
-      port: portRemote
-    });
-    safeCloseWebSocket(webSocket);
-    return;
-  }
-
-  const route = resolveRouteTarget(addressRemote, portRemote, routeRulesRaw, routeServersRaw, logger);
-  const primaryAddress = route?.host || addressRemote;
-  const primaryPort = route?.port || portRemote;
-  if (route) logger.info("DESTINATION_ROUTE_SELECTED", {
-    destination: addressRemote,
-    route: route.rule,
-    server: route.name,
-    target: `${primaryAddress}:${primaryPort}`
-  });
-
   let timeoutTimer = null;
 
   const resetTimeout = () => {
@@ -784,7 +1138,7 @@ async function handleTCPOutBound(
   }
 
   try {
-    const tcpSocket = await connectAndWrite(primaryAddress, primaryPort);
+    const tcpSocket = await connectAndWrite(addressRemote, portRemote);
     remoteSocketToWS(tcpSocket, webSocket, responseHeader, retry, logger, resetTimeout);
   } catch (err) {
     logger.warn("DIRECT_TCP_FAILED_RETRYING", { error: err.message });
