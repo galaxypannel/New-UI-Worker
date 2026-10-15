@@ -1,4 +1,4 @@
-name = "nextui"
+name = "nextuix"
 pages_build_output_dir = "." # _worker.js ရှိသည့် Directory (Root ဖြစ်လျှင် ".")
 
 compatibility_date = "2024-03-20"
