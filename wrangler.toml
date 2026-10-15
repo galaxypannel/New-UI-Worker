@@ -1,4 +1,4 @@
-name = "galaxytunnel"
+name = "nextui"
 pages_build_output_dir = "." # _worker.js ရှိသည့် Directory (Root ဖြစ်လျှင် ".")
 
 compatibility_date = "2024-03-20"
@@ -6,8 +6,8 @@ compatibility_flags = [ "nodejs_compat" ]
 
 
 [vars]
-WS_PATH = "galaxy-tunnel"
-PROXYIP = "galaxytunnel.cloud-ip.cc"
-UUID = "499781a6-5d19-4179-910f-f78a6ce28689"
+WS_PATH = "next"
+PROXYIP = "51.159.10.131"
+UUID = "09407067-843b-422c-8771-34a4335327a5"
 DNS_RESOLVER_URL = "https://cloudflare-dns.com/dns-query"
 RATE_LIMIT_PER_MINUTE = 60
